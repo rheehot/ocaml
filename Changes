@@ -636,6 +636,9 @@ OCaml 4.11.0 (19 August 2020)
   For instance, "val f: #F(X).t -> unit" is now allowed.
   (Florian Angeletti, review by Gabriel Scherer, suggestion by Leo White)
 
+- #9412: Keep Sys.opaque_identity in Cmm and Mach
+  (Stephen Dolan, review by Mark Shinwell)
+
 ### Standard library:
 
 - #9077: Add Seq.cons and Seq.append
