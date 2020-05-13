@@ -52,7 +52,7 @@ type operation =
   | Itailcall_imm of { func : string; label_after : label; }
   | Iextcall of { func : string; alloc : bool; label_after : label; }
   | Istackoffset of int
-  | Iload of Cmm.memory_chunk * Arch.addressing_mode
+  | Iload of Cmm.memory_chunk * Arch.addressing_mode * Asttypes.mutable_flag
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
   | Ialloc of { bytes : int; label_after_call_gc : label option;
       dbginfo : Debuginfo.alloc_dbginfo; spacetime_index : int; }
