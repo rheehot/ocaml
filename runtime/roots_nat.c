@@ -80,6 +80,7 @@ static link* frametables_list_tail(link *list) {
 
 static frame_descr * next_frame_descr(frame_descr * d) {
   unsigned char num_allocs = 0, *p;
+  uint32_t *p32;
   CAMLassert(d->retaddr >= 4096);
   /* Skip to end of live_ofs */
   p = (unsigned char*)&d->live_ofs[d->num_live];
@@ -88,35 +89,39 @@ static frame_descr * next_frame_descr(frame_descr * d) {
     num_allocs = *p;
     p += num_allocs + 1;
   }
-  /* Skip debug info if present */
-  if (d->frame_size & 1) {
-    /* Align to 32 bits */
-    p = Align_to(p, uint32_t);
-    p += sizeof(uint32_t) * (d->frame_size & 2 ? num_allocs : 1);
-  }
-  /* Align to word size */
-  p = Align_to(p, void*);
-  return ((frame_descr*) p);
+  /* Skip padding bytes to end of frame_descr */
+  p32 = Align_to(p, void*);
+  /* Skip debug info pointers */
+  p32++;
+  while ((p32[-1] & 1) == 1) p32++;
+  d = ((frame_descr*) p32);
+  if (d->num_live > d->frame_size) abort();
+  return d;
 }
 
 static void fill_hashtable(link *frametables) {
   intnat len, j;
   intnat * tbl;
   frame_descr * d;
+  uint32_t* p32;
   uintnat h;
   link *lnk = NULL;
 
   iter_list(frametables,lnk) {
     tbl = (intnat*) lnk->data;
     len = *tbl;
-    d = (frame_descr *)(tbl + 1);
+    p32 = (uint32_t *)(tbl + 1);
+    p32++;
+    while ((p32[-1] & 1) == 1) p32++;
+    d = (frame_descr*) p32;
     for (j = 0; j < len; j++) {
       h = Hash_retaddr(d->retaddr);
       while (caml_frame_descriptors[h] != NULL) {
         h = (h+1) & caml_frame_descriptors_mask;
       }
       caml_frame_descriptors[h] = d;
-      d = next_frame_descr(d);
+      if (j != len - 1)
+        d = next_frame_descr(d);
     }
   }
 }

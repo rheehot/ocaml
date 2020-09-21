@@ -180,29 +180,44 @@ let emit_frames a =
   in
   let emit_frame fd =
     assert (fd.fd_frame_size land 3 = 0);
-    let flags =
+    let flags, debuginfo_lbls =
       match fd.fd_debuginfo with
-      | Dbg_other d | Dbg_raise d ->
-        if Debuginfo.is_none d then 0 else 1
+      | Dbg_other dbg | Dbg_raise dbg when Debuginfo.is_none dbg ->
+         0, [None]
+      | Dbg_other dbg -> 1, [Some (label_debuginfos false dbg)]
+      | Dbg_raise dbg -> 1, [Some (label_debuginfos true dbg)]
+      | Dbg_alloc dbgs when
+             not !Clflags.debug
+             || Config.spacetime
+             || List.for_all (fun d ->
+                    Debuginfo.is_none d.Debuginfo.alloc_dbg) dbgs ->
+         2, [None]
       | Dbg_alloc dbgs ->
-        if !Clflags.debug && not Config.spacetime &&
-           List.exists (fun d ->
-             not (Debuginfo.is_none d.Debuginfo.alloc_dbg)) dbgs
-        then 3 else 2
+         let dbgs = dbgs |> List.map (fun Debuginfo.{alloc_dbg; _} ->
+           if Debuginfo.is_none alloc_dbg then None
+           else Some (label_debuginfos false alloc_dbg)) in
+         3, dbgs
     in
+    let pad_debuginfos =
+      match Arch.size_addr with
+      | 4 -> false
+      | 8 -> List.length debuginfo_lbls mod 2 = 1
+      | _ -> assert false in
+    if pad_debuginfos then a.efa_32 1l;
+    debuginfo_lbls
+    |> List.mapi (fun i d -> (i = 0), d)
+    |> List.rev
+    |> List.iter (fun (is_last, dbg) ->
+      let offs = if is_last then 0l else 1l in
+      match dbg with
+      | None -> a.efa_32 offs
+      | Some l -> a.efa_label_rel l offs);
     a.efa_code_label fd.fd_lbl;
     a.efa_16 (fd.fd_frame_size + flags);
     a.efa_16 (List.length fd.fd_live_offset);
     List.iter a.efa_16 fd.fd_live_offset;
     begin match fd.fd_debuginfo with
-    | _ when flags = 0 ->
-      ()
-    | Dbg_other dbg ->
-      a.efa_align 4;
-      a.efa_label_rel (label_debuginfos false dbg) Int32.zero
-    | Dbg_raise dbg ->
-      a.efa_align 4;
-      a.efa_label_rel (label_debuginfos true dbg) Int32.zero
+    | Dbg_other _ | Dbg_raise _ -> ()
     | Dbg_alloc dbg ->
       assert (List.length dbg < 256);
       a.efa_8 (List.length dbg);
@@ -212,14 +227,6 @@ let emit_frames a =
                 alloc_words - 1 <= Config.max_young_wosize &&
                 Config.max_young_wosize <= 256);
         a.efa_8 (alloc_words - 2)) dbg;
-      if flags = 3 then begin
-        a.efa_align 4;
-        List.iter (fun Debuginfo.{alloc_dbg; _} ->
-          if Debuginfo.is_none alloc_dbg then
-            a.efa_32 Int32.zero
-          else
-            a.efa_label_rel (label_debuginfos false alloc_dbg) Int32.zero) dbg
-      end
     end;
     a.efa_align Arch.size_addr
   in
