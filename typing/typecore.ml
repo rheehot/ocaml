@@ -1027,18 +1027,6 @@ module Constructor = NameChoice (struct
   let in_env _ = true
 end)
 
-(* unification of a type with a tconstr with
-   freshly created arguments *)
-let unify_head_only ~refine loc env ty constr =
-  let (_, ty_res) = instance_constructor constr in
-  let ty_res = repr ty_res in
-  match ty_res.desc with
-  | Tconstr(p,args,m) ->
-      ty_res.desc <- Tconstr(p,List.map (fun _ -> newvar ()) args,m);
-      enforce_constraints !env ty_res;
-      unify_pat_types ~refine loc env ty_res ty
-  | _ -> assert false
-
 (* Typing of patterns *)
 
 (* "half typed" cases are produced in [type_cases] when we've just typechecked
@@ -1542,10 +1530,6 @@ and type_pat_aux
           let name = constr.cstr_name in
           raise (Error (loc, !env, Unexpected_existential (r,name, exs)))
       end;
-      (* if constructor is gadt, we must verify that the expected type has the
-         correct head *)
-      if constr.cstr_generalized then
-        unify_head_only ~refine loc env (instance expected_ty) constr;
       let sargs =
         match sarg with
           None -> []
